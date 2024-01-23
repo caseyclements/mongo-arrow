@@ -17,7 +17,7 @@ from datetime import datetime
 import numpy as np
 import pyarrow as pa
 import pyarrow.types as _atypes
-from bson import Binary, Code, Decimal128, Int64, ObjectId
+from bson import Binary, Code, Decimal128, Int64, ObjectId, Regex
 from pyarrow import DataType as _ArrowDataType
 from pyarrow import (
     ExtensionScalar,
@@ -37,6 +37,7 @@ from pymongoarrow.pandas_types import (
     PandasCode,
     PandasDecimal128,
     PandasObjectId,
+    PandasRegex,
 )
 
 
@@ -190,8 +191,35 @@ class CodeType(ExtensionType):
         return CodeType()
 
 
-# Register all of the extension types.
-for dtype in [ObjectIdType, CodeType, Decimal128Type]:
+class RegexScalar(BSONExtensionScalar):
+    _bson_class = Regex
+
+
+class RegexType(ExtensionType):
+    _type_marker = _BsonArrowTypes.code
+
+    def __init__(self):
+        super().__init__(string(), "pymongoarrow.regex")
+
+    def __reduce__(self):
+        return RegexType, ()
+
+    def __arrow_ext_scalar_class__(self):
+        return RegexScalar
+
+    def to_pandas_dtype(self):
+        return PandasRegex()
+
+    def __arrow_ext_serialize__(self):
+        return b""
+
+    @classmethod
+    def __arrow_ext_deserialize__(self, storage_type, serialized):
+        return RegexType()
+
+
+# Register the extension types.
+for dtype in [ObjectIdType, CodeType, Decimal128Type, RegexType]:
     pa.register_extension_type(dtype())
 pa.register_extension_type(BinaryType(0))
 
@@ -218,7 +246,9 @@ def _is_code(obj):
     return type_marker == CodeType._type_marker
 
 
+# Map to PyArrow typwa
 _TYPE_NORMALIZER_FACTORY = {
+    # Int32: lambda _: int32(),  # todo - how come there isn't Int32?
     Int64: lambda _: int64(),
     float: lambda _: float64(),
     int: lambda _: int64(),
